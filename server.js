@@ -5,63 +5,175 @@ const xml2js = require("xml2js");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ── SOURCES ─────────────────────────────────────────────────────────────────
+// ── SOURCES ──────────────────────────────────────────────────────────────────
 const SOURCES = [
+  { name: "Brazil Journal",   domain: "braziljournal.com", rss: "https://braziljournal.com/feed" },
+  { name: "NeoFeed",          domain: "neofeed.com.br",    rss: "https://neofeed.com.br/feed" },
+  { name: "Valor Econômico",  domain: "valor.globo.com",   rss: "https://www.valor.com.br/rss" },
+];
+
+// ── THEMES — specific sectors first, then general ────────────────────────────
+const THEMES = [
   {
-    name: "Brazil Journal",
-    domain: "braziljournal.com",
-    rss: "https://braziljournal.com/feed",
+    id: "financeiro",
+    label: "🏦 Serviços Financeiros",
+    color: "#1a3a5c",
+    bg: "#d6e8f5",
+    keywords: [
+      "banco", "fintech", "crédito", "financiamento", "seguro", "seguradora",
+      "investimento", "fundo", "gestora", "bolsa", "ações", "b3", "cvm",
+      "debenture", "cdi", "selic", "cartão", "pagamento", "pix",
+      "open finance", "open banking", "itaú", "bradesco", "santander",
+      "nubank", "xp ", "btg", "inter ", "c6 bank", "agibank", "sicoob",
+      "sicredi", "caixa econômica", "bndes", "banco do brasil",
+      "private equity", "venture capital", "ipo", "follow-on",
+      "cra", "cri", "fiagro", "fidc", "tesouro direto", "câmbio",
+      "mercado financeiro", "prediction market", "corretora",
+    ],
   },
   {
-    name: "NeoFeed",
-    domain: "neofeed.com.br",
-    rss: "https://neofeed.com.br/feed",
+    id: "saude",
+    label: "🏥 Saúde",
+    color: "#1a5c3a",
+    bg: "#d6f5e3",
+    keywords: [
+      "saúde", "hospital", "clínica", "médico", "medicina", "farmácia",
+      "medicamento", "remédio", "vacina", "plano de saúde", "ans", "anvisa",
+      "oncologia", "diagnóstico", "laboratório", "cirurgia", "paciente",
+      "tratamento", "doença", "câncer", "oncoclínicas", "fleury", "hapvida",
+      "notredame", "rede d'or", "dasa", "hermes pardini", "pfizer",
+      "novo nordisk", "novonordisk", "roche", "bayer", "abbott",
+      "biotech", "farmacêutica", "healthtech", "telemedicina", "wellness",
+    ],
   },
   {
-    name: "Valor Econômico",
-    domain: "valor.globo.com",
-    rss: "https://www.valor.com.br/rss",
+    id: "educacao",
+    label: "🎓 Educação",
+    color: "#5c3a1a",
+    bg: "#f5ead6",
+    keywords: [
+      "educação", "escola", "universidade", "faculdade", "ensino",
+      "educacional", "edtech", "aluno", "professor", "mec", "enem",
+      "vestibular", "graduação", "pós-graduação", "mba", "curso",
+      "capacitação", "treinamento", "aprendizagem", "cogna", "kroton",
+      "anima", "yduqs", "ser educacional", "afya", "cruzeiro do sul",
+      "fgv", "fipe", "insper", "ibmec", "fundação",
+    ],
+  },
+  {
+    id: "eco",
+    label: "📊 Economia",
+    color: "#1a5e32",
+    bg: "#d6ead8",
+    keywords: [
+      "pib", "inflação", "copom", "banco central", "focus", "ipca", "igp",
+      "fiscal", "orçamento", "déficit", "superávit", "reforma tributária",
+      "petróleo", "commodities", "exportação", "importação", "balança",
+      "recessão", "crescimento econômico", "política monetária", "ibge",
+      "taxa de juros", "dólar", "real ", "economia brasileira",
+    ],
+  },
+  {
+    id: "biz",
+    label: "💼 Negócios",
+    color: "#6b2d04",
+    bg: "#f5e5d8",
+    keywords: [
+      "empresa", "ceo", "fusão", "aquisição", "m&a", "resultado trimestral",
+      "lucro", "receita", "varejo", "indústria", "logística",
+      "supply chain", "startup", "empreendedor", "negócio",
+    ],
+  },
+  {
+    id: "pol",
+    label: "🏛 Política",
+    color: "#4a235a",
+    bg: "#ede9f5",
+    keywords: [
+      "governo", "lula", "congresso", "câmara dos deputados", "senado",
+      "eleição", "presidente", "ministro", "stf", "judiciário",
+      "partido", "candidato", "política", "aprovação", "caiado",
+      "legislação", "regulação", "anatel", "cade",
+    ],
+  },
+  {
+    id: "tech",
+    label: "⚡ Tecnologia & IA",
+    color: "#1b4f72",
+    bg: "#ddeaf5",
+    keywords: [
+      "inteligência artificial", " ia ", " ai ", "tecnologia", "software",
+      "digital", "llm", "openai", "google", "amazon", "microsoft", "apple",
+      "dados", "algoritmo", "robô", "automação", "chatgpt", "machine learning",
+      "cloud", "saas", "cibersegurança", "blockchain", "bezos", "spacex",
+    ],
   },
 ];
 
-// ── CACHE ────────────────────────────────────────────────────────────────────
+// ── CACHE ─────────────────────────────────────────────────────────────────────
 let cache = { articles: [], updatedAt: null };
 
-// ── CATEGORY KEYWORDS ────────────────────────────────────────────────────────
-const KEYWORDS = {
-  tech: [
-    "inteligência artificial", "ia ", " ai ", "startup", "tecnologia",
-    "software", "digital", "llm", "openai", "google", "amazon", "microsoft",
-    "apple", "dados", "algoritmo", "robô", "automação", "chatgpt", "bezos",
-    "spacex", "nasdaq", "ipo tech",
-  ],
-  eco: [
-    "economia", "pib", "inflação", "juros", "selic", "banco central",
-    "copom", "focus", "câmbio", "dólar", "ipca", "fiscal", "orçamento",
-    "reforma tributária", "déficit", "superávit", "tesouro", "petróleo",
-    "commodities", "exportação", "importação", "balança",
-  ],
-  pol: [
-    "governo", "lula", "congresso", "câmara", "senado", "eleição",
-    "presidente", "ministro", "stf", "judiciário", "partido", "candidato",
-    "política", "voto", "aprovação", "psd", "pt ", "pl ", "caiado",
-  ],
-  biz: [
-    "empresa", "ceo", "fusão", "aquisição", "m&a", "ipo", "bolsa", "ações",
-    "mercado", "investimento", "fundo", "capital", "receita", "lucro",
-    "resultado", "trimestre", "private equity", "venture", "startup",
-    "banco", "fintech", "seguro", "varejo", "indústria",
-  ],
-};
-
-function classify(text) {
-  const t = text.toLowerCase();
-  const scores = { tech: 0, eco: 0, pol: 0, biz: 0 };
-  for (const [cat, words] of Object.entries(KEYWORDS)) {
-    for (const w of words) if (t.includes(w)) scores[cat]++;
+// ── CLASSIFY INTO THEME ───────────────────────────────────────────────────────
+function classify(title, desc) {
+  const text = (title + " " + desc).toLowerCase();
+  const scores = {};
+  for (const theme of THEMES) {
+    scores[theme.id] = 0;
+    for (const kw of theme.keywords) {
+      if (text.includes(kw)) scores[theme.id]++;
+    }
   }
-  const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0];
-  return best[1] > 0 ? best[0] : "biz";
+  let best = "biz";
+  let bestScore = 0;
+  for (const theme of THEMES) {
+    if (scores[theme.id] > bestScore) {
+      bestScore = scores[theme.id];
+      best = theme.id;
+    }
+  }
+  return best;
+}
+
+// ── MAKE BULLET POINTS FROM RSS DESCRIPTION ───────────────────────────────────
+function makeBullets(rawDesc) {
+  const text = rawDesc
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\[…\]|\[\.\.\.\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text || text.length < 30) {
+    return ["Clique para ler a matéria completa."];
+  }
+
+  // Split into sentences on . ! ? followed by space+uppercase
+  const sentences = text
+    .split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ"])/)
+    .map(s => s.trim())
+    .filter(s => s.length > 20 && s.length < 320);
+
+  if (sentences.length >= 2) {
+    return sentences.slice(0, 3);
+  }
+
+  // Fallback: split long text into ~2 chunks at punctuation
+  const mid = text.indexOf(". ", Math.floor(text.length * 0.35));
+  if (mid > 20) {
+    return [
+      text.slice(0, mid + 1).trim(),
+      text.slice(mid + 2).slice(0, 280).trim(),
+    ].filter(s => s.length > 10);
+  }
+
+  return [text.slice(0, 280)];
+}
+
+function stripHtml(html = "") {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function timeAgo(date) {
@@ -72,11 +184,7 @@ function timeAgo(date) {
   return `há ${Math.round(hrs / 24)}d`;
 }
 
-function stripHtml(html = "") {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-// ── FETCH ONE SOURCE ─────────────────────────────────────────────────────────
+// ── FETCH ONE RSS SOURCE ──────────────────────────────────────────────────────
 async function fetchSource(src, cutoff) {
   const res = await fetch(src.rss, {
     headers: { "User-Agent": "Mozilla/5.0 (compatible; BRBRIEF/1.0)" },
@@ -86,52 +194,40 @@ async function fetchSource(src, cutoff) {
   const xml = await res.text();
   const parsed = await xml2js.parseStringPromise(xml, { explicitArray: false });
 
-  const items =
-    parsed?.rss?.channel?.item ||
-    parsed?.feed?.entry ||
-    [];
-
+  const items = parsed?.rss?.channel?.item || parsed?.feed?.entry || [];
   const arr = Array.isArray(items) ? items : [items];
   const results = [];
 
   for (const item of arr) {
-    const pubDate = new Date(
-      item.pubDate || item.updated || item.published || ""
-    );
+    const pubDate = new Date(item.pubDate || item.updated || item.published || "");
     if (isNaN(pubDate) || pubDate < cutoff) continue;
 
-    const title = stripHtml(
-      item.title?._ || item.title || ""
-    ).trim();
+    const title = stripHtml(item.title?._ || item.title || "").trim();
+    if (title.length < 5) continue;
+
     const link =
       item.link?.href ||
       (typeof item.link === "string" ? item.link : "") ||
-      item.guid?._ ||
-      item.guid ||
-      "";
-    const rawDesc =
-      item.description ||
-      item["content:encoded"] ||
-      item.summary ||
-      item.content?._ ||
-      "";
-    const desc = stripHtml(rawDesc);
-    const summary = desc.length > 240 ? desc.slice(0, 237) + "…" : desc;
-    const category = classify(title + " " + desc);
+      item.guid?._ || item.guid || "";
 
-    if (title.length < 5) continue;
+    const rawDesc =
+      item["content:encoded"] ||
+      item.description ||
+      item.summary ||
+      item.content?._ || "";
+
+    const descClean = stripHtml(rawDesc);
+    const bullets = makeBullets(rawDesc);
+    const theme = classify(title, descClean);
 
     results.push({
       title,
       link,
-      summary: summary || "Clique para ler o artigo completo.",
+      bullets,
       source: src.name,
       domain: src.domain,
-      category,
-      pubDate: pubDate.toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "2-digit",
-      }),
+      theme,
+      pubDate: pubDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }),
       ageStr: timeAgo(pubDate),
       ts: pubDate.getTime(),
     });
@@ -161,7 +257,7 @@ async function refresh() {
   console.log(`[BRBRIEF] Done. ${all.length} artigos totais.`);
 }
 
-// ── HTML TEMPLATE ─────────────────────────────────────────────────────────────
+// ── BUILD HTML ────────────────────────────────────────────────────────────────
 function buildHTML(articles, updatedAt) {
   const total = articles.length;
   const updStr = updatedAt
@@ -171,70 +267,49 @@ function buildHTML(articles, updatedAt) {
     weekday: "long", day: "2-digit", month: "long", year: "numeric",
   });
 
-  const SOURCE_ORDER = ["Brazil Journal", "NeoFeed", "Valor Econômico"];
   const grouped = {};
-  SOURCE_ORDER.forEach((s) => (grouped[s] = []));
-  articles.forEach((a) => {
-    if (grouped[a.source]) grouped[a.source].push(a);
-  });
+  THEMES.forEach(t => (grouped[t.id] = []));
+  articles.forEach(a => { if (grouped[a.theme]) grouped[a.theme].push(a); });
 
-  const CAT_LABEL = {
-    tech: "⚡ Tecnologia",
-    eco: "📊 Economia",
-    pol: "🏛 Política",
-    biz: "💼 Negócios",
-  };
-  const CAT_CLS = {
-    tech: "t-tech",
-    eco: "t-eco",
-    pol: "t-pol",
-    biz: "t-biz",
-  };
+  function esc(s) {
+    return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
 
   function card(a) {
-    const cls = CAT_CLS[a.category] || "t-biz";
-    const lbl = CAT_LABEL[a.category] || "💼 Negócios";
+    const theme = THEMES.find(t => t.id === a.theme);
+    const bulletsHtml = a.bullets
+      .map(b => `<li>${esc(b)}</li>`)
+      .join("");
     const href = a.link && a.link.startsWith("http") ? a.link : "#";
     return `
-    <div class="card" data-cat="${a.category}">
+    <div class="card" data-theme="${a.theme}">
       <div class="card-top">
-        <span class="tag ${cls}">${lbl}</span>
-        <span class="card-age">${a.ageStr} · ${a.pubDate}</span>
+        <span class="tag" style="background:${theme?.bg};color:${theme?.color}">${theme?.label}</span>
+        <span class="card-meta">${esc(a.source)} · ${a.ageStr}</span>
       </div>
-      <h3>${a.title.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</h3>
-      <p>${a.summary.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</p>
-      <a class="read-link" href="${href}" target="_blank" rel="noopener">
-        Ler no ${a.source} →
-      </a>
+      <h3>${esc(a.title)}</h3>
+      <ul class="bullets">${bulletsHtml}</ul>
+      <a class="read-link" href="${href}" target="_blank" rel="noopener">Ler no ${esc(a.source)} →</a>
     </div>`;
   }
 
-  function srcBlock(name, domain, arts) {
-    if (!arts.length) return "";
+  function themeBlock(theme) {
+    const arts = grouped[theme.id];
+    if (!arts || arts.length === 0) return "";
     return `
-  <div class="src-block" data-src="${name}">
-    <div class="src-head">
-      <h2>${name}</h2>
-      <span class="dom">${domain}</span>
-      <span class="cnt">${arts.length} artigo${arts.length !== 1 ? "s" : ""}</span>
+  <div class="theme-block" data-theme="${theme.id}">
+    <div class="theme-head" style="border-color:${theme.color}">
+      <h2 style="color:${theme.color}">${theme.label}</h2>
+      <span class="theme-cnt">${arts.length} artigo${arts.length !== 1 ? "s" : ""}</span>
     </div>
-    <div class="grid">
-      ${arts.map(card).join("")}
-    </div>
+    <div class="grid">${arts.map(card).join("")}</div>
   </div>`;
   }
 
-  const blocksHTML = SOURCE_ORDER.map((name) => {
-    const src = SOURCES.find((s) => s.name === name);
-    return srcBlock(name, src?.domain || "", grouped[name] || []);
-  }).join("");
-
-  const emptyMsg =
-    total === 0
-      ? `<div class="empty"><div class="empty-icon">🔎</div>
-         <h3>Nenhum artigo nas últimas 24 horas</h3>
-         <p>Os sites ainda não publicaram nada hoje. Tente mais tarde.</p></div>`
-      : "";
+  const navBtns = [
+    `<button class="nb on" onclick="filter('all',this)">Todas</button>`,
+    ...THEMES.map(t => `<button class="nb" onclick="filter('${t.id}',this)">${t.label}</button>`),
+  ].join("");
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -252,38 +327,36 @@ body{background:var(--paper);color:var(--ink);font-family:'Source Serif 4',Georg
 .logo{text-align:center;padding:22px 20px 14px;border-bottom:3px double var(--ink)}
 .logo h1{font-family:'Playfair Display',serif;font-size:clamp(52px,11vw,104px);font-weight:900;line-height:1;letter-spacing:-4px}
 .logo h1 em{color:var(--red);font-style:normal}
-.logo .sub{font-family:'DM Sans',sans-serif;font-size:10px;letter-spacing:5px;color:var(--ink3);text-transform:uppercase;margin-top:7px}
+.logo .sub{font-family:'DM Sans',sans-serif;font-size:10px;letter-spacing:4px;color:var(--ink3);text-transform:uppercase;margin-top:7px}
 .srctags{display:flex;justify-content:center;padding:7px 0;border-bottom:1px solid var(--rule);font-family:'DM Sans',sans-serif;font-size:11px;color:var(--ink3);flex-wrap:wrap}
 .srctags span{padding:0 14px;border-right:1px solid var(--rule)}
 .srctags span:last-child{border-right:none}
-.nav{display:flex;justify-content:center;flex-wrap:wrap;border-bottom:2px solid var(--ink)}
-.nb{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;letter-spacing:1.5px;text-transform:uppercase;padding:9px 18px;border:none;background:none;color:var(--ink3);cursor:pointer;border-right:1px solid var(--rule);white-space:nowrap;transition:all .15s}
+.nav{display:flex;overflow-x:auto;border-bottom:2px solid var(--ink);-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.nav::-webkit-scrollbar{display:none}
+.nb{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:500;letter-spacing:1px;text-transform:uppercase;padding:9px 16px;border:none;background:none;color:var(--ink3);cursor:pointer;border-right:1px solid var(--rule);white-space:nowrap;flex-shrink:0;transition:all .15s}
 .nb:last-child{border-right:none}
 .nb.on{color:var(--paper);background:var(--ink)}
 .nb:hover:not(.on){color:var(--red)}
 .infobar{background:var(--paper2);border-bottom:1px solid var(--rule);padding:9px 24px;font-family:'DM Sans',sans-serif;font-size:11px;color:var(--ink3);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
 .infobar b{color:var(--ink)}
-.refresh-btn{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#fff;background:var(--ink);border:none;padding:6px 14px;cursor:pointer;transition:background .15s;text-decoration:none}
+.refresh-btn{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#fff;background:var(--ink);border:none;padding:6px 14px;cursor:pointer;transition:background .15s;text-decoration:none;display:inline-block}
 .refresh-btn:hover{background:var(--red)}
 .wrap{max-width:1100px;margin:0 auto;padding:0 20px 70px}
-.src-block{margin-top:38px}
-.src-head{display:flex;align-items:baseline;gap:10px;padding-bottom:9px;border-bottom:2px solid var(--ink)}
-.src-head h2{font-family:'Playfair Display',serif;font-size:22px;font-weight:700}
-.src-head .dom{font-family:'DM Sans',sans-serif;font-size:10px;color:var(--ink4)}
-.src-head .cnt{margin-left:auto;font-family:'DM Sans',sans-serif;font-size:10px;color:var(--ink4)}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
-.card{padding:20px 18px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:10px;transition:background .12s}
+.theme-block{margin-top:44px}
+.theme-head{display:flex;align-items:baseline;gap:12px;padding-bottom:10px;border-bottom:3px solid}
+.theme-head h2{font-family:'Playfair Display',serif;font-size:22px;font-weight:700}
+.theme-cnt{margin-left:auto;font-family:'DM Sans',sans-serif;font-size:10px;color:var(--ink4)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));border-left:1px solid var(--rule);border-top:1px solid var(--rule)}
+.card{padding:22px 18px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule);display:flex;flex-direction:column;gap:11px;transition:background .12s}
 .card:hover{background:var(--paper2)}
 .card-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.tag{font-family:'DM Sans',sans-serif;font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:3px 7px;white-space:nowrap}
-.t-tech{background:#ddeaf5;color:#1b4f72}
-.t-eco{background:#d6ead8;color:#1a5e32}
-.t-biz{background:#f5e5d8;color:#6b2d04}
-.t-pol{background:#ede9f5;color:#4a235a}
-.card-age{font-family:'DM Sans',sans-serif;font-size:9px;color:var(--ink4)}
+.tag{font-family:'DM Sans',sans-serif;font-size:8px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;padding:3px 7px;white-space:nowrap;border-radius:2px}
+.card-meta{font-family:'DM Sans',sans-serif;font-size:9px;color:var(--ink4)}
 .card h3{font-family:'Playfair Display',serif;font-size:15px;font-weight:700;line-height:1.4;color:var(--ink)}
-.card p{font-size:12.5px;color:var(--ink3);line-height:1.75;flex:1}
-.read-link{font-family:'DM Sans',sans-serif;font-size:10px;color:var(--red);font-weight:600;text-decoration:none;margin-top:4px;align-self:flex-end}
+.bullets{list-style:none;display:flex;flex-direction:column;gap:7px;flex:1}
+.bullets li{font-family:'DM Sans',sans-serif;font-size:12.5px;color:var(--ink2);line-height:1.6;padding-left:15px;position:relative}
+.bullets li::before{content:"•";position:absolute;left:0;color:var(--red);font-weight:900}
+.read-link{font-family:'DM Sans',sans-serif;font-size:10px;color:var(--red);font-weight:600;text-decoration:none;padding-top:10px;border-top:1px solid var(--rule);display:block;text-align:right}
 .read-link:hover{text-decoration:underline}
 .empty{text-align:center;padding:80px 20px;margin-top:40px}
 .empty-icon{font-size:3rem;margin-bottom:12px}
@@ -305,40 +378,27 @@ footer b{color:#fff}
 </div>
 <div class="logo">
   <h1><em>BR</em>BRIEF</h1>
-  <div class="sub">Negócios · Economia · Tecnologia · últimas 24 horas</div>
+  <div class="sub">Serviços Financeiros · Saúde · Educação · Economia · Negócios · Política · Tecnologia</div>
 </div>
 <div class="srctags">
-  <span>Brazil Journal</span><span>NeoFeed</span><span>Valor Econômico</span>
-  <span>Tecnologia & IA</span><span>Política & Economia</span><span>Negócios & Finanças</span>
+  <span>Brazil Journal</span><span>NeoFeed</span><span>Valor Econômico</span><span>Últimas 24h · Resumo automático</span>
 </div>
-<div class="nav">
-  <button class="nb on" onclick="filter('all',this)">Todas</button>
-  <button class="nb" onclick="filter('tech',this)">⚡ Tecnologia</button>
-  <button class="nb" onclick="filter('eco',this)">📊 Economia</button>
-  <button class="nb" onclick="filter('biz',this)">💼 Negócios</button>
-  <button class="nb" onclick="filter('pol',this)">🏛 Política</button>
-</div>
+<div class="nav">${navBtns}</div>
 <div class="infobar">
   <span><b>${total} artigo${total !== 1 ? "s" : ""}</b> · últimas 24h · atualizado às ${updStr}</span>
   <a class="refresh-btn" href="/refresh">↻ Atualizar agora</a>
 </div>
-<div class="wrap" id="feed">
-  ${emptyMsg}
-  ${blocksHTML}
+<div class="wrap">
+  ${total === 0 ? `<div class="empty"><div class="empty-icon">🔎</div><h3>Nenhum artigo nas últimas 24h</h3><p>Os sites ainda não publicaram nada hoje. Tente mais tarde.</p></div>` : ""}
+  ${THEMES.map(themeBlock).join("")}
 </div>
-<footer>
-  <b>BRBRIEF</b> · Brazil Journal · NeoFeed · Valor Econômico · Atualizado a cada hora automaticamente
-</footer>
+<footer><b>BRBRIEF</b> · Brazil Journal · NeoFeed · Valor Econômico · Atualizado automaticamente a cada hora</footer>
 <script>
 function filter(cat,btn){
   document.querySelectorAll('.nb').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
-  document.querySelectorAll('.card').forEach(c=>{
-    c.style.display=(cat==='all'||c.dataset.cat===cat)?'':'none';
-  });
-  document.querySelectorAll('.src-block').forEach(s=>{
-    const any=[...s.querySelectorAll('.card')].some(c=>c.style.display!=='none');
-    s.style.display=any?'':'none';
+  document.querySelectorAll('.theme-block').forEach(b=>{
+    b.style.display=(cat==='all'||b.dataset.theme===cat)?'':'none';
   });
 }
 </script>
@@ -346,29 +406,14 @@ function filter(cat,btn){
 </html>`;
 }
 
-// ── ROUTES ─────────────────────────────────────────────────────────────────
-app.get("/", (req, res) => {
-  res.send(buildHTML(cache.articles, cache.updatedAt));
-});
+// ── ROUTES ────────────────────────────────────────────────────────────────────
+app.get("/",        (req, res) => res.send(buildHTML(cache.articles, cache.updatedAt)));
+app.get("/refresh", async (req, res) => { await refresh(); res.redirect("/"); });
+app.get("/health",  (req, res) => res.json({ status: "ok", articles: cache.articles.length, updatedAt: cache.updatedAt }));
 
-app.get("/refresh", async (req, res) => {
-  await refresh();
-  res.redirect("/");
-});
-
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    articles: cache.articles.length,
-    updatedAt: cache.updatedAt,
-  });
-});
-
-// ── START ────────────────────────────────────────────────────────────────────
+// ── START ─────────────────────────────────────────────────────────────────────
 (async () => {
-  await refresh(); // fetch on startup
-  setInterval(refresh, 60 * 60 * 1000); // refresh every hour
-  app.listen(PORT, () => {
-    console.log(`[BRBRIEF] Servidor rodando na porta ${PORT}`);
-  });
+  await refresh();
+  setInterval(refresh, 60 * 60 * 1000);
+  app.listen(PORT, () => console.log(`[BRBRIEF] Rodando na porta ${PORT}`));
 })();
